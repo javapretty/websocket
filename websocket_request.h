@@ -1,6 +1,7 @@
 #ifndef __WEBSOCKET_REQUEST__
 #define __WEBSOCKET_REQUEST__
 
+#include <string>
 #include <stdint.h>
 #include <arpa/inet.h>
 #include "debug_log.h"
@@ -12,6 +13,7 @@ public:
 	int fetch_websocket_info(char *msg);
 	void print();
 	void reset();
+	int get_payload(std::string& payload);
 
 private:
 	int fetch_fin(char *msg, int &pos);
