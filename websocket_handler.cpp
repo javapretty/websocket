@@ -12,6 +12,9 @@ Websocket_Handler::Websocket_Handler(int fd):
 }
 
 Websocket_Handler::~Websocket_Handler(){
+	if (NULL != request_) {
+		delete request_;
+	}
 }
 
 int Websocket_Handler::process(){
