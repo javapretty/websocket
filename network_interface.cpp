@@ -10,10 +10,11 @@
 #include <map>
 #include "debug_log.h"
 #include "network_interface.h"
+#include "broadcast_queue.h"
+#include "websocket_respond.h"
 
-Network_Interface *Network_Interface::m_network_interface = NULL;
 
-Network_Interface::Network_Interface():
+NetworkInterface::NetworkInterface():
 		epollfd_(0),
 		listenfd_(0),
 		websocket_handler_map_()
@@ -22,11 +23,11 @@ Network_Interface::Network_Interface():
 		exit(1);
 }
 
-Network_Interface::~Network_Interface(){
+NetworkInterface::~NetworkInterface(){
 
 }
 
-int Network_Interface::init(){
+int NetworkInterface::init(){
 	listenfd_ = socket(AF_INET, SOCK_STREAM, 0);
 	if(listenfd_ == -1){
 		DEBUG_LOG("创建套接字失败!");
@@ -37,6 +38,8 @@ int Network_Interface::init(){
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 	server_addr.sin_port = htons(PORT);
+	int opt = 1;
+	setsockopt(listenfd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 	if(-1 == bind(listenfd_, (struct sockaddr *)(&server_addr), sizeof(server_addr))){
 		DEBUG_LOG("绑定套接字失败!");
 		return -1;
@@ -52,7 +55,7 @@ int Network_Interface::init(){
 	return 0;
 }
 
-int Network_Interface::epoll_loop(){
+int NetworkInterface::epoll_loop(){
 	struct sockaddr_in client_addr;
 	socklen_t clilen;
 	int nfds = 0;
@@ -80,25 +83,34 @@ int Network_Interface::epoll_loop(){
 				}
 			}
 		}
+		comsume_msg();
+
 	}
 
 	return 0;
 }
 
-int Network_Interface::set_noblock(int fd){
+int NetworkInterface::comsume_msg() {
+	int size = BROAD_QUEUE_PTR->queueSize();
+	Websocket_Respond respond;
+
+	while (size-- > 0) {
+		BroadcastMsg msg;
+		BROAD_QUEUE_PTR->getMsg(msg);
+		char buf[BUFFLEN] = {0};
+		int len = respond.makeFrame(msg.data.c_str(), msg.data.length(), buf);
+		broadcast(buf, len);
+	}
+}
+
+int NetworkInterface::set_noblock(int fd){
 	int flags;
     if ((flags = fcntl(fd, F_GETFL, 0)) == -1)
         flags = 0;
     return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-Network_Interface *Network_Interface::get_share_network_interface(){
-	if(m_network_interface == NULL)
-		m_network_interface = new Network_Interface();
-	return m_network_interface;
-}
-
-void Network_Interface::ctl_event(int fd, bool flag){
+void NetworkInterface::ctl_event(int fd, bool flag){
 	struct epoll_event ev;
 	ev.data.fd = fd;
 	ev.events = flag ? EPOLLIN : 0;
@@ -117,6 +129,34 @@ void Network_Interface::ctl_event(int fd, bool flag){
 	}
 }
 
-void Network_Interface::run(){
+void NetworkInterface::run(){
 	epoll_loop();
+}
+
+int NetworkInterface::broadcast(const char *data, int len) {
+	if (data == NULL || len <= 0) {
+		return 0;
+	}
+	WEB_SOCKET_HANDLER_MAP::iterator iter = websocket_handler_map_.begin();
+	for (; iter != websocket_handler_map_.end(); ++iter) {
+		if (iter->first == listenfd_) {
+			continue;
+		}
+		if (singleSend(iter->first, data, len) < 0) {
+			//ctl_event(iter->first, false);
+		}
+	}
+	return len;
+}
+
+int NetworkInterface::singleSend(int fd, const char *data, int len) {
+	int n = 0, sendSize = 0;
+	while (sendSize < len) {
+		if ((n = write(fd, data+sendSize, len-sendSize)) <= 0) {
+			DEBUG_LOG("write packet error:(%s)", strerror(errno));
+			return -1;
+		}
+		sendSize += n;
+	}
+	return sendSize;
 }

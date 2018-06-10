@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include "websocket_handler.h"
+#include "broadcast_queue.h"
 
 Websocket_Handler::Websocket_Handler(int fd):
 		buff_(),
@@ -11,6 +12,9 @@ Websocket_Handler::Websocket_Handler(int fd):
 }
 
 Websocket_Handler::~Websocket_Handler(){
+	if (NULL != request_) {
+		delete request_;
+	}
 }
 
 int Websocket_Handler::process(){
@@ -19,6 +23,13 @@ int Websocket_Handler::process(){
 	}
 	request_->fetch_websocket_info(buff_);
 	request_->print();
+	std::string payload;
+	BroadcastMsg broadcastMsg;
+	broadcastMsg.type = 1;
+	if (request_->get_payload(broadcastMsg.data) > 0) {
+		BROAD_QUEUE_PTR->addMsg(broadcastMsg);
+	}
+	request_->reset();
 	memset(buff_, 0, sizeof(buff_));
 	return 0;
 }

@@ -33,7 +33,6 @@ void Websocket_Request::print(){
 				"PAYLOAD: %s",
 				fin_, opcode_, mask_, payload_length_, payload_);
 
-	reset();
 }
 
 void Websocket_Request::reset(){
@@ -43,6 +42,13 @@ void Websocket_Request::reset(){
 	memset(masking_key_, 0, sizeof(masking_key_));
 	payload_length_ = 0;
 	memset(payload_, 0, sizeof(payload_));
+}
+
+int Websocket_Request::get_payload(std::string& payload) {
+	if (payload_length_ > 0) {
+		payload.assign(payload_, payload_length_);
+	}
+	return payload_length_;
 }
 
 int Websocket_Request::fetch_fin(char *msg, int &pos){
